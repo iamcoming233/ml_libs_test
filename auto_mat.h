@@ -12,6 +12,27 @@
 
 using namespace std;
 namespace automl{
+
+    template <class T>
+    struct DataPtr{
+
+        public:
+            T* data_ptr;
+            int _len;
+        
+        private:
+            int ref_count;
+    
+            DataPtr(int sz){
+                
+                ref_count = 1;
+                _len = sz;
+                data_ptr = new T[_len];
+            }
+            ~DataPtr(){
+                delete data_ptr;
+            }
+    };
     
     template <class T>
     class AutoMat{
@@ -31,6 +52,8 @@ namespace automl{
             void transpose(AutoMat& b);
             //TODO:matrix substract
             AutoMat operator-(const AutoMat& b);
+            //shallow copy
+            AutoMat& operator=(const AutoMat<T>& b);
 
             void filldata(T d);
 
@@ -42,7 +65,7 @@ namespace automl{
             int rstep;
 
         private:
-            shared_ptr<T> data_ptr; //矩阵数据指针
+            shared_ptr<DataPtr<T>> data; //矩阵数据指针
         
     };
 
@@ -52,6 +75,9 @@ AutoMat<T>::AutoMat(){
     cols = -1;
     rows = -1;
     channel = -1;
+
+    // data_ptr = make_shared(NULL);
+    printf("construct()\n");
 }
 
 template <class T>
@@ -61,7 +87,10 @@ AutoMat<T>::AutoMat(int _rows,int _cols){
     rows = _rows;
     channel = 1;
     
-    data_ptr = make_shared<T>(cols * rows * 1);
+    
+    data = make_shared(cols * rows * 1);
+    // printf("construct(int _rows,int _cols) data_ptr:%x\n",data_ptr);
+
 }
 
 template <class T>
@@ -70,13 +99,16 @@ AutoMat<T>::AutoMat(int _rows,int _cols,int channel){
     cols = _cols;
     rows = _rows;
     channel = channel;
-    
-    data_ptr = make_shared<T>(cols * rows * channel);
+    data = make_shared(cols * rows * channel);
 }
 
 template <class T>
 AutoMat<T>::~AutoMat(){
-   data_ptr.reset();
+    
+    printf("release data ptr:%x\n",data.get()->data_ptr);
+    // if(data.count==0)
+    //   delete *(data_ptr.get());
+    // *(data_ptr.get())=NULL;
 }
 
 template <class T>
@@ -90,12 +122,12 @@ AutoMat<T> AutoMat<T>::operator*(const AutoMat<T>& b){
         // AutoMat<T> R = new float[R_rows*R_cols];
 
         for (int  i  =  0;  i  <  R->rows;  i++){
-            T* tmp =  this->data_ptr.get() + (i * this->cols);
-            T* out = R->data_ptr.get() + (i * R->cols);
+            T* tmp =  data.get()->data_ptr + (i * this->cols);
+            T* out = R->data.get()->data_ptr + (i * R->cols);
             for  (int  j =  0;  j  <  b.cols;  j++){
-                   float sum = 0;
+                   T sum = 0;
                     for(int k= 0; k < this->cols ; k++){
-                      sum+= tmp[k] * b.data_ptr.get()[b.cols * j  + k];
+                      sum+= tmp[k] * b.data.get()->data_ptr[b.cols * j  + k];
                 }
                 //   printf("---------------------------------------------------\n");             
                 out[j] = sum;                      
@@ -112,7 +144,7 @@ AutoMat<T> AutoMat<T>::operator+(const AutoMat<T>& b){
     AutoMat<T> R = new AutoMat(this->rows,this->cols); 
     for(int i = 0; i < this->rows; i++)
         for(int j = 0; j < this->cols; j++){
-              R.data_ptr[i*cols + j] = this->data_ptr[i*cols + j] + b.data_ptr[i*cols + j];
+              R.data.get()->data_ptr[i*cols + j] = this->data.get()->data_ptr[i*cols + j] + b.data.get()->data_ptr[i*cols + j];
         }
     return R;
 }
@@ -124,30 +156,43 @@ AutoMat<T> AutoMat<T>::operator-(const AutoMat<T>& b){
     AutoMat<T> R = new AutoMat(this->rows,this->cols); 
     for(int i = 0; i < this->rows; i++)
         for(int j = 0; j < this->cols; j++){
-              R.data_ptr[i*cols + j] = this->data_ptr[i*cols + j] + b.data_ptr[i*cols + j];
+              R.data.get()->data_ptr[i*cols + j] = this->data.get()->data_ptr[i*cols + j] + b.data.get()->data_ptr[i*cols + j];
         }
     return R;
 }
 
 template <class T>
+AutoMat<T>& AutoMat<T>::operator=(const AutoMat<T>& b){
+
+    // AutoMat<T>* R = new AutoMat(); 
+    cols = b.cols;
+    rows = b.rows; 
+    channel = b.channel;
+    data = b.data;
+
+    return *this;
+}
+
+
+template <class T>
 void AutoMat<T>::transpose(AutoMat<T>& b){
-    assert(b.data_ptr);
+    assert(b.data);
 
     for(int i = 0; i < this->rows; i++)
         for(int j = 0; j < this->cols; j++){
-         b.data_ptr[j * rows + i] = b.data_ptr[i*cols + j];
+         b.data.get()->data_ptr[j * rows + i] = b.data.get()->data_ptr[i*cols + j];
     }
     return b;
 }
 
 template <class T>
 void AutoMat<T>::show(){
-    assert(this->data_ptr);
+    assert(this->data);
 
     for(int i = 0; i < rows; i++){
         for(int j = 0; j < cols; j++){
         //  printf("22");
-         cout<<data_ptr.get()[i*cols + j]<<" ";
+         cout<<data.get()->data_ptr[i*cols + j]<<" ";
         }
         cout<<endl;
     }
@@ -156,13 +201,13 @@ void AutoMat<T>::show(){
 template <class T>
 void AutoMat<T>::filldata(T d){
 
-    assert(this->data_ptr);
+    assert(this->data);
 
     for(int i = 0; i < rows; i++){
         for(int j = 0; j < cols; j++){
-            printf("(%d,%d)|",i,j);
+            // printf("(%d,%d)|",i,j);
         //    cout<<i<<" "<<j<<"|";
-           data_ptr.get()[i*cols + j] = d;
+           data.get()->data_ptr[i*cols + j] = d;
         }
         // printf("\n");
    }
